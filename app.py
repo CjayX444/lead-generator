@@ -12,8 +12,14 @@ Serves:
     GET    /api/leads              -> list all leads (used by the dashboard)
     POST   /api/leads/<id>/status  -> update a lead's status
     DELETE /api/leads/<id>         -> permanently remove a lead (e.g. junk from the scanner)
+
+Database location: controlled by the LEAD_DB_PATH environment variable.
+On Render, set LEAD_DB_PATH to a path on your mounted persistent disk
+(e.g. /opt/render/project/src/data/leads.db) so leads survive restarts
+and deploys. Locally, it just defaults to a file next to this script.
 """
 
+import os
 import sqlite3
 import time
 import uuid
@@ -23,7 +29,8 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "leads.db"
+DB_PATH = Path(os.environ.get("LEAD_DB_PATH", BASE_DIR / "leads.db"))
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)  # create the disk's data/ folder if it doesn't exist yet
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
