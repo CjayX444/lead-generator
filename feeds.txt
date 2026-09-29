@@ -1,0 +1,4 @@
+# One feed URL per line. Lines starting with # are ignored.
+# Google Alerts: google.com/alerts -> type a search -> "Show options" -> Deliver to: RSS feed -> Create -> copy the RSS link here.
+# Good alert searches: "need a painter" Kalamazoo   |   "recommend a painter" Portage   |   "house painters" Kalamazoo County
+# Put match: in front of a URL if that feed also needs the "someone is asking" filter.
