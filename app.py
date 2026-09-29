@@ -7,10 +7,11 @@ Run:
     python app.py
 
 Serves:
-    GET  /                       -> the form/dashboard (static/index.html)
-    POST /api/leads              -> create a lead (used by the form AND the scraper)
-    GET  /api/leads              -> list all leads (used by the dashboard)
-    POST /api/leads/<id>/status  -> update a lead's status
+    GET    /                       -> the form/dashboard (static/index.html)
+    POST   /api/leads              -> create a lead (used by the form AND the scanner)
+    GET    /api/leads              -> list all leads (used by the dashboard)
+    POST   /api/leads/<id>/status  -> update a lead's status
+    DELETE /api/leads/<id>         -> permanently remove a lead (e.g. junk from the scanner)
 """
 
 import sqlite3
@@ -51,6 +52,12 @@ def init_db():
             created_at INTEGER
         )
     """)
+    # Safe, non-destructive migrations for anyone running an older database.
+    for stmt in ("ALTER TABLE leads ADD COLUMN link TEXT",):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -78,8 +85,8 @@ def create_lead():
     lead_id = "lead_" + uuid.uuid4().hex[:10]
     conn = get_db()
     conn.execute(
-        """INSERT INTO leads (id, name, phone, email, zip, service, urgency, desc, source, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO leads (id, name, phone, email, zip, service, urgency, desc, source, status, created_at, link)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             lead_id,
             data.get("name", ""),
@@ -92,6 +99,7 @@ def create_lead():
             data.get("source", "form"),
             "new",
             int(time.time() * 1000),
+            data.get("link", ""),
         ),
     )
     conn.commit()
@@ -113,7 +121,19 @@ def update_status(lead_id):
     return jsonify({"ok": True})
 
 
-init_db()  # runs on import too, so gunicorn (production) creates the table on startup
+@app.route("/api/leads/<lead_id>", methods=["DELETE"])
+def delete_lead(lead_id):
+    conn = get_db()
+    cur = conn.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
+    conn.commit()
+    removed = cur.rowcount
+    conn.close()
+    if removed == 0:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True})
+
+
+init_db()  # also runs under gunicorn (production), not just python app.py
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

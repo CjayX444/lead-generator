@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>McCurtis Painting — Lead Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<style>
+  :root {
+    --ink: #16241F; --ink-soft: #2B3A33; --paper: #EFEAE1; --paper-raised: #F7F4EC;
+    --line: #D9D2C4; --brass: #B4832A; --brick: #A34B34; --brick-bg: #F3E3DD;
+    --pine: #3F6C51; --pine-bg: #E3EBE2; --slate: #5B6B63;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'IBM Plex Sans', sans-serif;
+    background:
+      repeating-linear-gradient(0deg, rgba(22,36,31,0.035) 0, rgba(22,36,31,0.035) 1px, transparent 1px, transparent 32px),
+      repeating-linear-gradient(90deg, rgba(22,36,31,0.035) 0, rgba(22,36,31,0.035) 1px, transparent 1px, transparent 32px),
+      var(--paper);
+    color: var(--ink); padding: 0 0 4rem;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 1.25rem; }
+  .hero { background: var(--ink); color: var(--paper); padding: 2.75rem 0 2.25rem; margin-bottom: 2rem; position: relative; overflow: hidden; }
+  .hero::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 38px, rgba(180,131,42,0.07) 38px 39px); pointer-events: none; }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; position: relative; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark { width: 38px; height: 38px; border-radius: 8px; background: var(--brass); color: var(--ink); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .brand-mark svg { width: 23px; height: 23px; }
+  .brand-name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; }
+  .brand-sub { font-size: 12px; color: #C7CDC5; margin-top: -2px; }
+  .live-pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(180,131,42,0.16); border: 1px solid rgba(180,131,42,0.5); color: #E9CE96; font-size: 12.5px; padding: 5px 11px; border-radius: 100px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #6FBE86; box-shadow: 0 0 0 0 rgba(111,190,134,0.6); animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(111,190,134,0.55); } 70% { box-shadow: 0 0 0 7px rgba(111,190,134,0); } 100% { box-shadow: 0 0 0 0 rgba(111,190,134,0); } }
+  h1.headline { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 1.6rem 0 0.5rem; max-width: 16ch; position: relative; }
+  .headline em { font-style: italic; color: #E9CE96; }
+  .dek { color: #C7CDC5; font-size: 15px; max-width: 46ch; margin: 0 0 1.75rem; line-height: 1.55; position: relative; }
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; overflow: hidden; position: relative; }
+  .stat { background: rgba(255,255,255,0.03); padding: 14px 16px; }
+  .stat-num { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; color: #fff; }
+  .stat-label { font-size: 11.5px; color: #A9B2AB; margin-top: 2px; }
+  .stat-num .unit { font-size: 13px; font-weight: 500; color: #C7CDC5; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--line); }
+  .tab { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; font-weight: 500; background: none; border: none; padding: 10px 4px; margin-right: 22px; color: var(--slate); cursor: pointer; border-bottom: 2px solid transparent; position: relative; top: 1px; }
+  .tab.active { color: var(--ink); border-bottom-color: var(--brass); }
+  .tab i { margin-right: 6px; font-size: 15px; vertical-align: -2px; }
+  .feed-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
+  .feed-toolbar h2 { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; margin: 0; }
+  .pill-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill-filters button { font-family: 'IBM Plex Sans', sans-serif; font-size: 12.5px; padding: 6px 12px; border-radius: 100px; border: 1px solid var(--line); background: var(--paper-raised); color: var(--ink-soft); cursor: pointer; }
+  .pill-filters button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .lead-card { background: var(--paper-raised); border: 1px solid var(--line); border-left: 3px solid var(--brass); border-radius: 4px; padding: 1rem 1.15rem; margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start; position: relative; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; font-weight: 600; font-size: 14px; color: #fff; }
+  .lead-body { flex: 1; min-width: 0; }
+  .lead-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+  .lead-name { font-weight: 600; font-size: 15px; }
+  .badge { font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 100px; }
+  .badge-source-form { background: var(--pine-bg); color: var(--pine); }
+  .badge-source-reddit { background: #FCE8D6; color: #B5570E; }
+  .badge-source-web { background: #E4E1F5; color: #5B4FA3; }
+  .badge-urgent { background: var(--brick-bg); color: var(--brick); }
+  .badge-status { background: #EEE9DC; color: var(--ink-soft); text-transform: capitalize; }
+  .lead-meta { font-size: 12.5px; color: var(--slate); margin-bottom: 6px; }
+  .lead-desc { font-size: 14px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.45; }
+  .lead-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn-contact { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 5px; border: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; text-decoration: none; }
+  .btn-call { background: var(--ink); color: var(--paper); }
+  .btn-text, .btn-link { background: var(--paper); color: var(--ink); border: 1px solid var(--line) !important; }
+  .status-select { font-family: 'IBM Plex Sans', sans-serif; font-size: 12.5px; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: #fff; margin-left: auto; }
+  .btn-remove { background: none; border: none; color: var(--slate); cursor: pointer; padding: 4px 6px; border-radius: 5px; flex-shrink: 0; align-self: flex-start; }
+  .btn-remove:hover { color: var(--brick); background: var(--brick-bg); }
+  .timestamp { font-size: 11.5px; color: #93998F; white-space: nowrap; }
+  .form-panel { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 6px; padding: 1.75rem; max-width: 480px; margin: 0 auto; }
+  .form-panel h2 { font-family: 'Fraunces', serif; font-size: 20px; margin: 0 0 4px; }
+  .form-panel .sub { font-size: 13.5px; color: var(--slate); margin: 0 0 1.5rem; }
+  .field { margin-bottom: 14px; }
+  .field label { font-size: 12.5px; color: var(--ink-soft); font-weight: 500; display: block; margin-bottom: 5px; }
+  .field input, .field select, .field textarea { width: 100%; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; padding: 9px 11px; border-radius: 5px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--brass); }
+  .row2 { display: flex; gap: 12px; }
+  .row2 .field { flex: 1; }
+  .submit-btn { width: 100%; background: var(--ink); color: var(--paper); border: none; padding: 12px; border-radius: 5px; font-family: 'IBM Plex Sans', sans-serif; font-size: 14.5px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+  .err { font-size: 12px; color: var(--brick); margin-top: 3px; display: none; }
+  .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .pcol-head { font-size: 12px; font-weight: 600; text-transform: capitalize; color: var(--ink-soft); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .pcol-count { background: var(--line); color: var(--ink-soft); font-size: 10.5px; padding: 1px 7px; border-radius: 100px; font-weight: 600; }
+  .pcard { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 4px; padding: 9px 10px; margin-bottom: 8px; font-size: 12.5px; }
+  .pcard .pname { font-weight: 600; margin-bottom: 2px; }
+  .pcard .pmeta { color: var(--slate); font-size: 11px; }
+  @media (max-width: 760px) { .stat-row { grid-template-columns: repeat(2, 1fr); } .pipeline { grid-template-columns: 1fr 1fr; } .row2 { flex-direction: column; gap: 0; } }
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 11 L12 4.2 L20.5 11" />
+            <path d="M5.5 9.7 V20 H18.5 V9.7" />
+            <path d="M9.5 20 V14.5 H14.5 V20" />
+            <path d="M15.2 16.4 L18.6 14.3" />
+            <path d="M18.6 14.3 L20.6 13.4 L20.1 15.5 Z" fill="currentColor" stroke="none" />
+            <circle cx="21.6" cy="12.6" r="0.55" fill="currentColor" stroke="none" />
+            <circle cx="22.4" cy="14.1" r="0.4" fill="currentColor" stroke="none" />
+            <circle cx="21.3" cy="15.4" r="0.35" fill="currentColor" stroke="none" />
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">McCurtis Painting</div>
+          <div class="brand-sub">Kalamazoo County &middot; Interior &amp; Exterior Painting</div>
+        </div>
+      </div>
+      <div class="live-pill"><span class="live-dot"></span>Live &mdash; scanning for new leads</div>
+    </div>
+    <h1 class="headline">Every homeowner looking for a painter near you, <em>caught in one place.</em></h1>
+    <p class="dek">Your own intake form and lead radar, feeding a single dashboard &mdash; instead of paying per lead and splitting every one with competitors.</p>
+    <div class="stat-row" id="stat-row"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab active" id="tab-feed" onclick="setView('feed')"><i class="ti ti-broadcast"></i>Live Feed</button>
+    <button class="tab" id="tab-pipeline" onclick="setView('pipeline')"><i class="ti ti-layout-kanban"></i>Pipeline</button>
+    <button class="tab" id="tab-form" onclick="setView('form')"><i class="ti ti-clipboard-text"></i>Request Form</button>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script>
+const API_URL = "/api/leads"; // same-origin, since Flask serves this file directly
+
+const SERVICES = ["Interior painting","Exterior painting","Cabinet refinishing","Deck/Fence staining","Commercial painting","Pressure washing","Drywall repair","Color consultation","Other"];
+const STATUSES = ["new","contacted","quoted","won","lost"];
+const AVATAR_COLORS = ["#B4832A","#3F6C51","#A34B34","#5B4FA3","#2B3A33"];
+
+let view = "feed";
+let leads = [];
+let statusFilter = "all";
+let submitted = false;
+let loading = true;
+let submitError = "";
+
+function timeAgo(ts){
+  const mins = Math.round((Date.now() - Number(ts)) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + "m ago";
+  const hrs = Math.round(mins/60);
+  if (hrs < 24) return hrs + "h ago";
+  return Math.round(hrs/24) + "d ago";
+}
+
+async function loadLeads(){
+  loading = true;
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    leads = (data.leads || []);
+  } catch(e) {
+    leads = [];
+  }
+  loading = false;
+  renderStats();
+  renderContent();
+}
+
+async function submitLead(data){
+  try {
+    const res = await fetch(API_URL, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "failed");
+    submitted = true;
+    submitError = "";
+    loadLeads();
+  } catch(e){
+    submitError = "Couldn't submit right now. Try again.";
+    renderContent();
+  }
+}
+
+async function updateStatus(id, newStatus){
+  const lead = leads.find(l => l.id === id);
+  if (lead) lead.status = newStatus;
+  renderContent();
+  try {
+    await fetch(API_URL + "/" + id + "/status", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ status: newStatus }) });
+  } catch(e) {}
+}
+
+async function removeLead(id){
+  const idx = leads.findIndex(l => l.id === id);
+  if (idx === -1) return;
+  const removed = leads[idx];
+  leads.splice(idx, 1); // remove locally right away so it feels instant
+  renderStats();
+  renderContent();
+  try {
+    const res = await fetch(API_URL + "/" + id, { method: "DELETE" });
+    if (!res.ok) throw new Error("delete failed");
+  } catch(e) {
+    leads.splice(idx, 0, removed); // put it back if the server didn't actually delete it
+    renderStats();
+    renderContent();
+  }
+}
+
+function renderStats(){
+  const today = leads.filter(l => Date.now() - Number(l.created_at) < 1000*60*60*24).length;
+  const won = leads.filter(l => l.status === "won").length;
+  const total = leads.length || 1;
+  const convo = Math.round((won/total)*100);
+  document.getElementById("stat-row").innerHTML = `
+    <div class="stat"><div class="stat-num">${leads.length}</div><div class="stat-label">Total leads captured</div></div>
+    <div class="stat"><div class="stat-num">${today}</div><div class="stat-label">New in last 24h</div></div>
+    <div class="stat"><div class="stat-num">${convo}<span class="unit">%</span></div><div class="stat-label">Lead-to-close rate</div></div>
+    <div class="stat"><div class="stat-num">$0<span class="unit">/lead</span></div><div class="stat-label">vs. $15–$85 on Angi</div></div>
+  `;
+}
+
+function setView(v){
+  view = v;
+  ["feed","pipeline","form"].forEach(t => document.getElementById("tab-"+t).classList.toggle("active", t===v));
+  if (v === "feed") loadLeads(); else renderContent();
+}
+function setFilter(f){ statusFilter = f; renderContent(); }
+
+function sourceBadge(source){
+  if (source === "reddit") return `<span class="badge badge-source-reddit">Reddit</span>`;
+  if (source === "web") return `<span class="badge badge-source-web">Web</span>`;
+  return `<span class="badge badge-source-form">Website</span>`;
+}
+
+function renderFeed(){
+  if (loading) return `<p style="color:var(--slate); text-align:center; padding:2rem 0;">Loading leads...</p>`;
+  const counts = {}; STATUSES.forEach(s => counts[s]=0);
+  leads.forEach(l => { if (counts[l.status]!==undefined) counts[l.status]++; });
+  const filtered = statusFilter === "all" ? leads : leads.filter(l => l.status === statusFilter);
+
+  const toolbar = `
+    <div class="feed-toolbar">
+      <h2>Incoming leads</h2>
+      <div class="pill-filters">
+        <button class="${statusFilter==='all'?'active':''}" onclick="setFilter('all')">All (${leads.length})</button>
+        ${STATUSES.map(s => `<button class="${statusFilter===s?'active':''}" onclick="setFilter('${s}')">${s} (${counts[s]})</button>`).join("")}
+        <button onclick="loadLeads()" style="margin-left:auto; padding:6px 10px; border-radius:100px; border:1px solid var(--line); background:var(--paper-raised); cursor:pointer;"><i class="ti ti-refresh" style="font-size:13px;"></i></button>
+      </div>
+    </div>
+  `;
+
+  if (filtered.length === 0) return toolbar + `<p style="color:var(--slate); text-align:center; padding:2rem 0;">No leads yet — submissions from the form and the scan land here.</p>`;
+
+  const cards = filtered.map((l, i) => {
+    const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+    const initials = (l.name||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+    const phoneDigits = (l.phone || "").replace(/[^0-9+]/g, "");
+
+    let actions = "";
+    if (l.phone) {
+      actions += `<a class="btn-contact btn-call" href="tel:${phoneDigits}"><i class="ti ti-phone"></i>Call</a>`;
+      actions += `<a class="btn-contact btn-text" href="sms:${phoneDigits}"><i class="ti ti-message"></i>Text</a>`;
+    }
+    if (l.email) {
+      actions += `<a class="btn-contact btn-text" href="mailto:${encodeURIComponent(l.email)}"><i class="ti ti-mail"></i>Email</a>`;
+    }
+    if (l.link) {
+      const label = l.source === "reddit" ? "View on Reddit" : "View source";
+      const icon = l.source === "reddit" ? "ti-brand-reddit" : "ti-external-link";
+      actions += `<a class="btn-contact btn-link" href="${escapeAttr(l.link)}" target="_blank" rel="noopener"><i class="ti ${icon}"></i>${label}</a>`;
+    }
+    if (!actions) actions = `<span style="font-size:12.5px; color:var(--slate);">No contact info captured</span>`;
+
+    return `
+    <div class="lead-card">
+      <div class="avatar" style="background:${color};">${initials}</div>
+      <div class="lead-body">
+        <div class="lead-top">
+          <span class="lead-name">${escapeHtml(l.name)}</span>
+          ${sourceBadge(l.source)}
+          ${l.urgency === 'ASAP' ? `<span class="badge badge-urgent">Urgent</span>` : ""}
+          <span class="badge badge-status">${l.status}</span>
+        </div>
+        <div class="lead-meta">${escapeHtml(l.service)}${l.zip ? " &middot; Zip "+escapeHtml(l.zip) : ""} &middot; <span class="timestamp">${timeAgo(l.created_at)}</span></div>
+        <p class="lead-desc">${escapeHtml(l.desc)}</p>
+        <div class="lead-actions">
+          ${actions}
+          <select class="status-select" onchange="updateStatus('${l.id}', this.value)">
+            ${STATUSES.map(s => `<option value="${s}" ${s===l.status?"selected":""}>${s}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button class="btn-remove" onclick="confirmRemove('${l.id}', '${escapeAttr(l.name).replace(/'/g, "\\'")}')" title="Remove this lead" aria-label="Remove this lead">
+        <i class="ti ti-x" style="font-size:16px;"></i>
+      </button>
+    </div>`;
+  }).join("");
+
+  return toolbar + cards;
+}
+
+function confirmRemove(id, name){
+  if (confirm(`Remove this lead (${name})? This can't be undone.`)) {
+    removeLead(id);
+  }
+}
+
+function renderPipeline(){
+  const cols = STATUSES.map(s => {
+    const items = leads.filter(l => l.status === s);
+    return `<div><div class="pcol-head">${s} <span class="pcol-count">${items.length}</span></div>
+      ${items.map(l => `<div class="pcard"><div class="pname">${escapeHtml(l.name)}</div><div class="pmeta">${escapeHtml(l.service)}</div></div>`).join("")}
+    </div>`;
+  }).join("");
+  return `<div class="pipeline">${cols}</div>`;
+}
+
+function renderForm(){
+  if (submitted) {
+    return `<div class="form-panel" style="text-align:center;">
+      <i class="ti ti-circle-check" style="font-size:36px; color:var(--pine);"></i>
+      <h2 style="margin-top:0.75rem;">Request received</h2>
+      <p class="sub">This just landed on the Live Feed tab.</p>
+      <button class="submit-btn" style="width:auto; padding:10px 20px;" onclick="submitted=false; renderContent();">Submit another</button>
+    </div>`;
+  }
+  return `
+    <div class="form-panel">
+      <h2>Get a free painting quote</h2>
+      <p class="sub">Tell us about your project and we'll follow up shortly.</p>
+      <form onsubmit="handleSubmit(event)">
+        <div class="field"><label>Full name</label><input type="text" id="f-name" placeholder="Jordan Miller"><div class="err" id="err-name">Enter your name</div></div>
+        <div class="row2">
+          <div class="field"><label>Phone</label><input type="tel" id="f-phone" placeholder="(269) 555-0132"><div class="err" id="err-phone">Enter a phone number</div></div>
+          <div class="field"><label>Zip code</label><input type="text" id="f-zip" placeholder="49001"><div class="err" id="err-zip">Enter a zip</div></div>
+        </div>
+        <div class="field"><label>Email (optional)</label><input type="email" id="f-email" placeholder="jordan@email.com"></div>
+        <div class="field"><label>Project type</label><select id="f-service">${SERVICES.map(s=>`<option>${s}</option>`).join("")}</select></div>
+        <div class="field"><label>Timeline</label><select id="f-urgency"><option value="ASAP">ASAP</option><option value="Soon">Within a month</option><option value="Flexible">Just planning</option></select></div>
+        <div class="field"><label>Tell us about the project</label><textarea id="f-desc" rows="3" placeholder="What are you looking to have painted?"></textarea><div class="err" id="err-desc">Give a quick description</div></div>
+        ${submitError ? `<p style="color:var(--brick); font-size:13px;">${submitError}</p>` : ""}
+        <button type="submit" class="submit-btn">Get a quote</button>
+      </form>
+    </div>
+  `;
+}
+
+function handleSubmit(e){
+  e.preventDefault();
+  ["name","phone","zip","desc"].forEach(f => document.getElementById("err-"+f).style.display = "none");
+  const name = document.getElementById("f-name").value.trim();
+  const phone = document.getElementById("f-phone").value.trim();
+  const zip = document.getElementById("f-zip").value.trim();
+  const desc = document.getElementById("f-desc").value.trim();
+  let ok = true;
+  if (!name){ document.getElementById("err-name").style.display="block"; ok=false; }
+  if (!phone){ document.getElementById("err-phone").style.display="block"; ok=false; }
+  if (!zip){ document.getElementById("err-zip").style.display="block"; ok=false; }
+  if (!desc){ document.getElementById("err-desc").style.display="block"; ok=false; }
+  if (!ok) return;
+  submitLead({
+    name, phone, zip, desc,
+    email: document.getElementById("f-email").value.trim(),
+    service: document.getElementById("f-service").value,
+    urgency: document.getElementById("f-urgency").value,
+    source: "form",
+  });
+}
+
+function escapeHtml(s){
+  if (!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function escapeAttr(s){ return escapeHtml(s); }
+
+function renderContent(){
+  const el = document.getElementById("content");
+  if (view === "feed") el.innerHTML = renderFeed();
+  else if (view === "pipeline") el.innerHTML = renderPipeline();
+  else el.innerHTML = renderForm();
+}
+
+loadLeads();
+setInterval(() => { if (view === "feed") loadLeads(); }, 20000);
+</script>
+</body>
+</html>

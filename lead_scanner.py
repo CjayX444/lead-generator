@@ -1,9 +1,15 @@
 """
 McCurtis lead scanner. No API keys, no Reddit approval needed.
-Reads public RSS/Atom feeds (Reddit searches + Google Alerts + any feed you add
-to feeds.txt), keeps posts where someone is asking for a painter, and pushes
-NEW ones to the lead app. Safe to run as often as you like: it skips anything
-already on the dashboard.
+Reads public RSS/Atom feeds (Reddit + Google Alerts + anything in feeds.txt),
+keeps posts where someone is asking for contractor-type work within ~60 miles
+of Kalamazoo, and pushes NEW ones to the lead app. Safe to run on a schedule.
+
+IMPORTANT: Reddit's rate limit gets worse the more you manually re-run this
+in a short window. If you see a wall of "rate-limited" lines and 0 leads,
+that's Reddit cooling you down from earlier testing -- wait 30-60 minutes
+before running it by hand again. This version also has a circuit breaker:
+after a few failures in a row it stops hammering Reddit for the rest of
+that run instead of retrying every single source.
 """
 import html
 import os
@@ -19,14 +25,34 @@ API = os.environ.get("LEAD_API_URL", "https://lead-generator-e1w3.onrender.com/a
 UA = "McCurtisLeadFinder/1.0 (by u/YOUR_REDDIT_USERNAME)"  # put your Reddit username in here
 
 SUBS = ["kalamazoo", "Portage", "WesternMichigan"]
-QUERIES = ["painter", "repaint", "exterior paint", "stain deck"]
-SITEWIDE = ["painter Kalamazoo", "painting Portage Michigan", "paint contractor Kalamazoo County"]
 
-PAINT = r"(paint|painter|painting|repaint|stain|staining)"
+CITIES = [
+    "Kalamazoo", "Portage", "Battle Creek", "Plainwell", "Otsego", "Allegan",
+    "South Haven", "Paw Paw", "Three Rivers", "Sturgis", "Marshall", "Hastings",
+    "Grand Rapids", "Holland", "Niles", "St. Joseph", "Benton Harbor",
+    "Coldwater", "Vicksburg", "Dowagiac",
+]
+CITY_BATCH_SIZE = 5  # groups cities into fewer, bigger requests instead of one request per city
+
+TRADES = [
+    "general contractor", "contractor", "roofer", "roofing", "drywall",
+    "home repair", "remodel", "remodeling", "renovation", "addition",
+    "barn builder", "shed builder", "siding", "handyman", "painter", "painting",
+    "deck", "basement finish", "kitchen remodel", "bathroom remodel",
+]
+
 ASK = r"(need|want|looking for|searching for|recommend|recommendation|anyone know|who (do|did|should)|quote|estimate|suggestion)"
-NEED = [re.compile(ASK + r".{0,80}" + PAINT, re.I | re.S), re.compile(PAINT + r".{0,80}" + ASK, re.I | re.S)]
-ADS = re.compile(r"free estimate|licensed (and|&) insured|call (us|now)|we offer|our (team|crew)|book (now|today)|% off|\bwe (paint|are)\b", re.I)
+TRADE_PATTERN = "(" + "|".join(re.escape(t) for t in TRADES) + ")"
+NEED = [
+    re.compile(ASK + r".{0,50}" + TRADE_PATTERN, re.I | re.S),
+    re.compile(TRADE_PATTERN + r".{0,50}" + ASK, re.I | re.S),
+]
+ADS = re.compile(r"free estimate|licensed (and|&) insured|call (us|now)|we offer|our (team|crew)|book (now|today)|% off|\bwe (paint|build|remodel|are)\b|gumroad|shopify|etsy\.com", re.I)
 NS = {"a": "http://www.w3.org/2005/Atom"}
+
+MAX_RETRIES = 2
+BASE_WAIT = 20
+CONSECUTIVE_FAIL_LIMIT = 4  # circuit breaker: stop hitting Reddit for the rest of this run after this many failures in a row
 
 
 def strip(s):
@@ -44,52 +70,80 @@ def parse(xml):
                strip(e.findtext("a:content", "", NS)), e.findtext("a:author/a:name", "", NS))
 
 
-def fetch(url):
+def fetch(url, attempt=1):
+    """Returns (text, hit_rate_limit_wall)."""
     try:
         r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+        if r.status_code == 429 and attempt <= MAX_RETRIES:
+            wait = int(r.headers.get("Retry-After", BASE_WAIT * (2 ** (attempt - 1))))
+            print(f"  rate-limited, waiting {wait}s (attempt {attempt}/{MAX_RETRIES}): {url[:90]}")
+            time.sleep(wait)
+            return fetch(url, attempt + 1)
         if r.status_code != 200:
             print(f"  skipped ({r.status_code}): {url[:90]}")
-            return ""
-        return r.text
+            return "", (r.status_code == 429)
+        return r.text, False
     except requests.RequestException as e:
         print(f"  error: {e}")
-        return ""
+        return "", False
 
 
 def sources():
-    """(label, url, must_match_intent)"""
+    """(label, url, must_match_intent, require_city_list_or_None)"""
     q = up.quote_plus
     out = []
+    combined_trades = " OR ".join(TRADES)
+
     for s in SUBS:
-        out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/new.rss?limit=100", True))
-        for w in QUERIES:
-            out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/search.rss?q={q(w)}&restrict_sr=1&sort=new&t=week", True))
-    for w in SITEWIDE:
-        out.append(("Reddit", f"https://www.reddit.com/search.rss?q={q(w)}&sort=new&t=week", True))
+        out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/new.rss?limit=100", True, None))
+        out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/search.rss?q={q(combined_trades)}&restrict_sr=1&sort=new&t=week", True, None))
+
+    for i in range(0, len(CITIES), CITY_BATCH_SIZE):
+        batch = CITIES[i:i + CITY_BATCH_SIZE]
+        city_query = " OR ".join(batch)
+        label = f"Reddit ({'/'.join(batch)})"
+        out.append((label, f"https://www.reddit.com/search.rss?q={q(combined_trades + ' ' + city_query)}&sort=new&t=week", True, batch))
+
     if os.path.exists("feeds.txt"):
         for line in open("feeds.txt", encoding="utf-8"):
             line = line.strip()
             if line and not line.startswith("#"):
                 strict = line.startswith("match:")
-                out.append(("Web alert", line.replace("match:", "", 1).strip(), strict))
+                out.append(("Web alert", line.replace("match:", "", 1).strip(), strict, None))
     return out
 
 
 def service_for(t):
     t = t.lower()
-    for words, name in [(("cabinet",), "Cabinet refinishing"), (("deck", "fence", "stain"), "Deck/Fence staining"),
-                        (("pressure wash",), "Pressure washing"), (("commercial", "office", "store"), "Commercial painting"),
-                        (("exterior", "siding", "outside", "trim"), "Exterior painting"),
-                        (("interior", "room", "bedroom", "kitchen", "walls"), "Interior painting")]:
+    for words, name in [
+        (("barn",), "Barn construction"),
+        (("shed",), "Shed construction"),
+        (("roof",), "Roofing"),
+        (("drywall",), "Drywall repair"),
+        (("siding",), "Siding/exterior"),
+        (("deck", "fence", "stain"), "Deck/Fence staining"),
+        (("cabinet",), "Cabinet refinishing"),
+        (("pressure wash",), "Pressure washing"),
+        (("commercial", "office", "store"), "Commercial work"),
+        (("basement",), "Basement finishing"),
+        (("addition",), "Addition/room"),
+        (("kitchen", "bathroom", "remodel", "renovation"), "Remodel/renovation"),
+        (("exterior", "outside", "trim"), "Exterior work"),
+        (("interior", "room", "bedroom", "walls"), "Interior work"),
+        (("paint",), "Painting"),
+        (("handyman", "home repair"), "Home repair"),
+        (("contractor",), "General contractor"),
+    ]:
         if any(w in t for w in words):
             return name
     return "Other"
 
 
-def existing_descs():
-    for _ in range(3):  # Render free tier can take ~1 min to wake up
+def existing_links():
+    for _ in range(3):
         try:
-            return {l["desc"] for l in requests.get(API, timeout=120).json()["leads"]}
+            leads = requests.get(API, timeout=120).json()["leads"]
+            return {l.get("link") or l["desc"] for l in leads}
         except Exception as e:
             print("waiting on app...", e)
             time.sleep(10)
@@ -97,10 +151,17 @@ def existing_descs():
 
 
 def main():
-    seen, added = existing_descs(), 0
-    for label, url, strict in sources():
-        xml = fetch(url)
-        time.sleep(2)  # be polite to Reddit
+    seen, added, consecutive_fails = existing_links(), 0, 0
+    srcs = sources()
+    print(f"Checking {len(srcs)} sources...")
+    for label, url, strict, require_cities in srcs:
+        if consecutive_fails >= CONSECUTIVE_FAIL_LIMIT and "Reddit" in label:
+            print(f"  Reddit is rate-limiting hard right now -- skipping remaining Reddit "
+                  f"sources for this run (will retry next scheduled run).")
+            continue
+        xml, hit_wall = fetch(url)
+        time.sleep(4)
+        consecutive_fails = consecutive_fails + 1 if hit_wall else 0
         if not xml:
             continue
         try:
@@ -109,18 +170,23 @@ def main():
             continue
         for title, link, body, author in items:
             text = f"{title} {body}"
-            if ADS.search(text) or (strict and not any(p.search(text) for p in NEED)):
+            if ADS.search(text):
                 continue
-            desc = f'{label}: "{title[:140]}" - {link}'
-            if desc in seen:
+            if strict and not any(p.search(text) for p in NEED):
                 continue
+            if require_cities and not any(c.lower() in text.lower() for c in require_cities):
+                continue
+            key = link or f'{label}:{title}'
+            if key in seen:
+                continue
+            desc = f'{label}: "{title[:140]}"'
             name = ("u/" + author.strip("/").replace("u/", "")) if "Reddit" in label and author else up.urlparse(link).netloc or "Web"
             lead = {"name": name, "phone": "", "email": "", "zip": "", "service": service_for(text),
                     "urgency": "ASAP" if re.search(r"asap|urgent|this week|emergency", text, re.I) else "Flexible",
-                    "desc": desc, "source": "reddit" if "Reddit" in label else "web"}
+                    "desc": desc, "source": "reddit" if "Reddit" in label else "web", "link": link}
             try:
                 requests.post(API, json=lead, timeout=60).raise_for_status()
-                seen.add(desc)
+                seen.add(key)
                 added += 1
                 print("  + new lead:", title[:70])
             except requests.RequestException as e:
