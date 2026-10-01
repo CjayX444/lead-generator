@@ -1,15 +1,31 @@
 """
-McCurtis lead scanner. No API keys, no Reddit approval needed.
-Reads public RSS/Atom feeds (Reddit + Google Alerts + anything in feeds.txt),
-keeps posts where someone is asking for contractor-type work within ~60 miles
-of Kalamazoo, and pushes NEW ones to the lead app. Safe to run on a schedule.
+McCurtis lead scanner.
 
-IMPORTANT: Reddit's rate limit gets worse the more you manually re-run this
-in a short window. If you see a wall of "rate-limited" lines and 0 leads,
-that's Reddit cooling you down from earlier testing -- wait 30-60 minutes
-before running it by hand again. This version also has a circuit breaker:
-after a few failures in a row it stops hammering Reddit for the rest of
-that run instead of retrying every single source.
+REDDIT REALITY CHECK (as of testing in Sept 2026): Reddit closed self-service
+API applications in Nov 2025 and killed the old .json URL trick in May 2026.
+There is no approval path left for a small personal project -- official,
+higher-limit access is not something we can get here. Unauthenticated RSS
+still works, but Reddit's tolerance for it is low (roughly ~10 requests per
+minute per IP) and this IP has already been hit a lot during testing, so it
+can take a while to "cool off." Because of that, Reddit is treated as a
+BONUS source here, not the backbone:
+  - Each run only checks a SMALL ROTATING SLICE of Reddit sources (not all
+    of them), tracked in reddit_rotation.txt next to this script, so the
+    full list still gets covered over several runs without hammering
+    Reddit all at once.
+  - Reddit requests do NOT retry-with-backoff anymore -- a 429 just means
+    "skip it this run," so one rate-limited run doesn't turn into a
+    multi-minute stall.
+  - Uses old.reddit.com instead of www.reddit.com for RSS (untested by me
+    whether it's actually treated differently by Reddit -- worth watching
+    the log to see if it behaves better).
+  - GitHub Actions should keep running with SKIP_REDDIT=1 -- it only
+    checks feeds.txt (Google Alerts etc), which isn't rate-limited by us
+    and doesn't care which IP asks.
+  - The REAL backbone for steady lead flow is feeds.txt (Google Alerts)
+    and the request form itself. Treat any Reddit leads as a bonus on top.
+
+Set the environment variable SKIP_REDDIT=1 to skip all Reddit sources.
 """
 import html
 import os
@@ -23,8 +39,14 @@ import requests
 
 API = os.environ.get("LEAD_API_URL", "https://lead-generator-e1w3.onrender.com/api/leads")
 UA = "McCurtisLeadFinder/1.0 (by u/YOUR_REDDIT_USERNAME)"  # put your Reddit username in here
+SKIP_REDDIT = os.environ.get("SKIP_REDDIT", "0") == "1"
 
-SUBS = ["kalamazoo", "Portage", "WesternMichigan"]
+REDDIT_BASE = "https://old.reddit.com"  # trying this instead of www.reddit.com
+REDDIT_PER_RUN = 2  # only check this many Reddit sources per run -- keep this LOW
+ROTATION_FILE = "reddit_rotation.txt"
+
+SUBS = ["kzoo", "Portage"]  # NOTE: r/kalamazoo is dead/abandoned since 2015 (-> r/kzoo); r/WesternMichigan never existed
+STATEWIDE_SUBS = ["Michigan"]  # real + active, but broad -- requires a city-name match to count (see all_reddit_sources)
 
 CITIES = [
     "Kalamazoo", "Portage", "Battle Creek", "Plainwell", "Otsego", "Allegan",
@@ -32,7 +54,7 @@ CITIES = [
     "Grand Rapids", "Holland", "Niles", "St. Joseph", "Benton Harbor",
     "Coldwater", "Vicksburg", "Dowagiac",
 ]
-CITY_BATCH_SIZE = 5  # groups cities into fewer, bigger requests instead of one request per city
+CITY_BATCH_SIZE = 5
 
 TRADES = [
     "general contractor", "contractor", "roofer", "roofing", "drywall",
@@ -50,66 +72,108 @@ NEED = [
 ADS = re.compile(r"free estimate|licensed (and|&) insured|call (us|now)|we offer|our (team|crew)|book (now|today)|% off|\bwe (paint|build|remodel|are)\b|gumroad|shopify|etsy\.com", re.I)
 NS = {"a": "http://www.w3.org/2005/Atom"}
 
-MAX_RETRIES = 2
-BASE_WAIT = 20
-CONSECUTIVE_FAIL_LIMIT = 4  # circuit breaker: stop hitting Reddit for the rest of this run after this many failures in a row
-
 
 def strip(s):
     return html.unescape(re.sub(r"<[^>]+>", " ", s or "")).strip()
 
 
 def parse(xml):
-    """Yield (title, link, body, author) from an Atom feed."""
     for e in ET.fromstring(xml).findall("a:entry", NS):
         ln = e.find("a:link", NS)
         link = ln.get("href", "") if ln is not None else ""
-        if "google.com/url" in link:  # Google Alerts wraps the real link
+        if "google.com/url" in link:
             link = up.parse_qs(up.urlparse(link).query).get("url", [link])[0]
         yield (strip(e.findtext("a:title", "", NS)), link,
                strip(e.findtext("a:content", "", NS)), e.findtext("a:author/a:name", "", NS))
 
 
-def fetch(url, attempt=1):
-    """Returns (text, hit_rate_limit_wall)."""
-    try:
-        r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
-        if r.status_code == 429 and attempt <= MAX_RETRIES:
-            wait = int(r.headers.get("Retry-After", BASE_WAIT * (2 ** (attempt - 1))))
-            print(f"  rate-limited, waiting {wait}s (attempt {attempt}/{MAX_RETRIES}): {url[:90]}")
-            time.sleep(wait)
-            return fetch(url, attempt + 1)
+def fetch(url, retry_on_429):
+    """retry_on_429=False for Reddit (skip immediately, don't dig the hole
+    deeper); True for everything else (a couple of gentle retries is fine)."""
+    max_retries = 2 if retry_on_429 else 0
+    attempt = 1
+    while True:
+        try:
+            r = requests.get(url, headers={"User-Agent": UA}, timeout=30)
+        except requests.RequestException as e:
+            print(f"  error: {e}")
+            return "", False
+        if r.status_code == 429:
+            if attempt <= max_retries:
+                wait = int(r.headers.get("Retry-After", 20 * (2 ** (attempt - 1))))
+                print(f"  rate-limited, waiting {wait}s (attempt {attempt}/{max_retries}): {url[:90]}")
+                time.sleep(wait)
+                attempt += 1
+                continue
+            print(f"  rate-limited -- skipping: {url[:90]}")
+            return "", True
         if r.status_code != 200:
             print(f"  skipped ({r.status_code}): {url[:90]}")
-            return "", (r.status_code == 429)
+            return "", False
         return r.text, False
-    except requests.RequestException as e:
-        print(f"  error: {e}")
-        return "", False
 
 
-def sources():
-    """(label, url, must_match_intent, require_city_list_or_None)"""
+def all_reddit_sources():
+    """The full list of Reddit sources we'd LIKE to check. sources() only
+    uses a small rotating slice of this per run -- see load/save rotation."""
     q = up.quote_plus
     out = []
     combined_trades = " OR ".join(TRADES)
-
     for s in SUBS:
-        out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/new.rss?limit=100", True, None))
-        out.append((f"Reddit r/{s}", f"https://www.reddit.com/r/{s}/search.rss?q={q(combined_trades)}&restrict_sr=1&sort=new&t=week", True, None))
-
+        out.append((f"Reddit r/{s}", f"{REDDIT_BASE}/r/{s}/new.rss?limit=100", True, None))
+        out.append((f"Reddit r/{s}", f"{REDDIT_BASE}/r/{s}/search.rss?q={q(combined_trades)}&restrict_sr=1&sort=new&t=week", True, None))
+    for s in STATEWIDE_SUBS:
+        # broad/statewide sub -- require a tracked city name in the text so Detroit/Ann Arbor etc. posts don't slip through
+        out.append((f"Reddit r/{s}", f"{REDDIT_BASE}/r/{s}/new.rss?limit=100", True, CITIES))
+        out.append((f"Reddit r/{s}", f"{REDDIT_BASE}/r/{s}/search.rss?q={q(combined_trades)}&restrict_sr=1&sort=new&t=week", True, CITIES))
     for i in range(0, len(CITIES), CITY_BATCH_SIZE):
         batch = CITIES[i:i + CITY_BATCH_SIZE]
         city_query = " OR ".join(batch)
         label = f"Reddit ({'/'.join(batch)})"
-        out.append((label, f"https://www.reddit.com/search.rss?q={q(combined_trades + ' ' + city_query)}&sort=new&t=week", True, batch))
+        out.append((label, f"{REDDIT_BASE}/search.rss?q={q(combined_trades + ' ' + city_query)}&sort=new&t=week", True, batch))
+    return out
+
+
+def load_rotation_index(total):
+    try:
+        with open(ROTATION_FILE, encoding="utf-8") as f:
+            return int(f.read().strip()) % total
+    except (FileNotFoundError, ValueError):
+        return 0
+
+
+def save_rotation_index(idx, total):
+    try:
+        with open(ROTATION_FILE, "w", encoding="utf-8") as f:
+            f.write(str(idx % total))
+    except OSError as e:
+        print(f"  couldn't save rotation position: {e}")
+
+
+def next_reddit_slice():
+    reddit_all = all_reddit_sources()
+    total = len(reddit_all)
+    start = load_rotation_index(total)
+    slice_ = [reddit_all[(start + i) % total] for i in range(min(REDDIT_PER_RUN, total))]
+    save_rotation_index(start + REDDIT_PER_RUN, total)
+    return slice_
+
+
+def sources():
+    """(label, url, must_match_intent, require_city_list_or_None, is_reddit)"""
+    out = []
+    if not SKIP_REDDIT:
+        for label, url, strict, require_cities in next_reddit_slice():
+            out.append((label, url, strict, require_cities, True))
+    else:
+        print("SKIP_REDDIT is set -- only checking non-Reddit feeds this run.")
 
     if os.path.exists("feeds.txt"):
         for line in open("feeds.txt", encoding="utf-8"):
             line = line.strip()
             if line and not line.startswith("#"):
                 strict = line.startswith("match:")
-                out.append(("Web alert", line.replace("match:", "", 1).strip(), strict, None))
+                out.append(("Web alert", line.replace("match:", "", 1).strip(), strict, None, False))
     return out
 
 
@@ -151,17 +215,16 @@ def existing_links():
 
 
 def main():
-    seen, added, consecutive_fails = existing_links(), 0, 0
+    seen, added = existing_links(), 0
     srcs = sources()
     print(f"Checking {len(srcs)} sources...")
-    for label, url, strict, require_cities in srcs:
-        if consecutive_fails >= CONSECUTIVE_FAIL_LIMIT and "Reddit" in label:
-            print(f"  Reddit is rate-limiting hard right now -- skipping remaining Reddit "
-                  f"sources for this run (will retry next scheduled run).")
-            continue
-        xml, hit_wall = fetch(url)
-        time.sleep(4)
-        consecutive_fails = consecutive_fails + 1 if hit_wall else 0
+    if not srcs:
+        print("No sources to check (SKIP_REDDIT is on and feeds.txt is empty -- add some Google Alert feeds to feeds.txt).")
+        return
+    for label, url, strict, require_cities, is_reddit in srcs:
+        print(f"  checking: {url}")
+        xml, hit_wall = fetch(url, retry_on_429=not is_reddit)
+        time.sleep(15 if is_reddit else 2)
         if not xml:
             continue
         try:

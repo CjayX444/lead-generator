@@ -1,0 +1,39 @@
+^CChecking 10 sources...
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/r/kalamazoo/search.rss?q=general+contractor+OR+contractor+OR+roofer
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/r/kalamazoo/search.rss?q=general+contractor+OR+contractor+OR+roofer
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/r/Portage/new.rss?limit=100
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/r/Portage/new.rss?limit=100
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/r/Portage/search.rss?q=general+contractor+OR+contractor+OR+roofer+O
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/r/Portage/search.rss?q=general+contractor+OR+contractor+OR+roofer+O
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/r/WesternMichigan/new.rss?limit=100
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/r/WesternMichigan/new.rss?limit=100
+  skipped (429): https://www.reddit.com/r/WesternMichigan/new.rss?limit=100
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/r/WesternMichigan/search.rss?q=general+contractor+OR+contractor+OR+
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/r/WesternMichigan/search.rss?q=general+contractor+OR+contractor+OR+
+  skipped (429): https://www.reddit.com/r/WesternMichigan/search.rss?q=general+contractor+OR+contractor+OR+
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 20s (attempt 1/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+  rate-limited, waiting 40s (attempt 2/2): https://www.reddit.com/search.rss?q=general+contractor+OR+contractor+OR+roofer+OR+roofing+
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
+Checking 2 sources...
+Done. 0 new lead(s).
